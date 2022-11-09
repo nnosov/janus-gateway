@@ -123,6 +123,7 @@ static const char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 static uint16_t heartbeat = 0;
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
 static gboolean declare_outgoing_queue = TRUE;
+static gboolean create_exchange = TRUE;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -189,6 +190,11 @@ int janus_rabbitmqevh_init(const char *config_path) {
 			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
 	}
+
+    /* Whether create exchange or use an existing one? */
+    item = janus_config_get(config, config_general, janus_config_type_item, "create_exchange");
+    if(item && item->value)
+        create_exchange = janus_is_true(item->value);
 
 	/* Which events should we subscribe to? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "events");
@@ -407,13 +413,15 @@ int janus_rabbitmqevh_connect(void) {
 	}
 	rmq_exchange = amqp_empty_bytes;
 	if(exchange != NULL) {
-		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring exchange...\n");
 		rmq_exchange = amqp_cstring_bytes(exchange);
-		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, 0, 0, 0, amqp_empty_table);
-		result = amqp_get_rpc_reply(rmq_conn);
-		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
-			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
-			return -1;
+		if(create_exchange) {
+		    JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring exchange...\n");
+		    amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, 0, 0, 0, amqp_empty_table);
+		    result = amqp_get_rpc_reply(rmq_conn);
+		    if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+		        JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+		        return -1;
+		    }
 		}
 	}
 
